@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <string.h>
 #include "http11_parser.h"
+#include "form_parser.h"
 #include <ctype.h>
 #include "tst.h"
 
@@ -14,6 +15,7 @@ static VALUE mMongrel;
 static VALUE cHttpParser;
 static VALUE cURIClassifier;
 static VALUE eHttpParserError;
+static VALUE eQSPError;
 
 #define id_handler_map rb_intern("@handler_map")
 #define id_http_body rb_intern("@http_body")
@@ -498,7 +500,7 @@ VALUE URIClassifier_unregister(VALUE self, VALUE uri)
 VALUE URIClassifier_resolve(VALUE self, VALUE uri)
 {
   void *handler = NULL;
-  int pref_len = 0;
+  unsigned int pref_len = 0;
   struct tst *tst = NULL;
   VALUE result;
   unsigned char *uri_str = NULL;
@@ -532,6 +534,138 @@ VALUE URIClassifier_resolve(VALUE self, VALUE uri)
 
   return result;
 }
+
+/***** (Un)escape URL functions *****/
+
+VALUE unescape_helper(const char *at, long len)
+{
+  long out_len = url_unescape_length(at, len);
+  char out[out_len];
+  
+  url_unescape(at, len, out);
+  return rb_str_new(out, out_len);
+}
+
+VALUE escape_helper(const char *at, long len)
+{
+  long out_len = url_escape_length(at, len);
+  char out[out_len];
+  
+  url_escape(at, len, out);
+  return rb_str_new(out, out_len);
+}
+
+VALUE HttpParser_unescape(VALUE self, VALUE input) {
+  Check_Type(input, T_STRING);
+  return unescape_helper(RSTRING_PTR(input), RSTRING_LEN(input));
+}
+
+VALUE HttpParser_escape(VALUE self, VALUE input) {
+  Check_Type(input, T_STRING);
+  return escape_helper(RSTRING_PTR(input), RSTRING_LEN(input));
+  
+}
+
+struct qsp_data {
+  VALUE keys;
+  VALUE value;
+  VALUE hash;
+};
+
+/******** Query Parse Ragel Callbacks *****************************/
+void key_cb(void *data, const char *at, size_t length)
+{
+  struct qsp_data *qsp_data = (struct qsp_data *) data;
+  VALUE new_key;
+  
+  if(DEBUG) INSPECT("keys", qsp_data->keys);
+  
+  if(qsp_data->keys == Qnil) {
+    qsp_data->keys = rb_ary_new();
+    rb_gc_mark(qsp_data->keys);
+  }
+  
+  new_key = unescape_helper(at, (long)length);
+  if(DEBUG) INSPECT("key", new_key);
+  rb_ary_push(qsp_data->keys, new_key);
+}
+
+void value_cb(void *data, const char *at, size_t length)
+{
+  struct qsp_data *qsp_data = (struct qsp_data *) data;
+  
+  if(qsp_data->value != Qnil)
+    rb_raise(eQSPError, "Query pair value already set!");
+  qsp_data->value = unescape_helper(at, (long)length);
+  if(DEBUG) INSPECT("value", qsp_data->value);
+}
+
+void pair_cb(void *data, const char *at, size_t length)
+{
+  struct qsp_data *qsp_data = (struct qsp_data *) data;
+  VALUE last_key, key, a, b;
+  
+  if(DEBUG) INSPECT("pair", Qnil);
+  
+  last_key = rb_ary_pop(qsp_data->keys);
+  
+  a = qsp_data->hash;  
+  while((key = rb_ary_shift(qsp_data->keys))  != Qnil) {
+    b = rb_hash_aref(a, key);
+    if(b == Qnil) {
+      b = rb_hash_new(); 
+      rb_hash_aset(a, key, b);
+    }
+    a = b;
+  }
+  /* a is either an array or hash to put our value into */
+  /* TODO: if last_key is blank, then a should be an array, and we push into
+   * it */
+  rb_hash_aset(a, last_key, qsp_data->value);
+  
+  qsp_data->keys = Qnil;
+  qsp_data->value = Qnil;
+}
+
+void error_cb(void *data)
+{
+  rb_raise(eQSPError, "Parse Error.");
+}
+
+/******** </Query Parse Ragel Callbacks> **************************/
+
+// TODO: make optional 2nd argument to pass in Hash to add to.
+VALUE HttpParser_form_parse(VALUE self, VALUE input) 
+{
+  Check_Type(input, T_STRING);
+  form_parser parser;
+  struct qsp_data qsp_data;
+  size_t nread;
+  TRACE();
+  
+  parser.data = NULL;
+  parser.pair_cb = pair_cb;
+  parser.key_cb = key_cb;
+  parser.value_cb = value_cb;
+  parser.error_cb = error_cb;
+  
+  qsp_data.hash = rb_hash_new(); 
+  rb_gc_mark(qsp_data.hash);
+  qsp_data.keys = Qnil;
+  qsp_data.value = Qnil;
+  parser.data = (void *) &qsp_data;
+  
+  if(DEBUG) INSPECT("parse input", input);
+  
+  nread = form_parser_execute(&parser, 
+                              StringValuePtr(input), 
+                              RSTRING_LEN(input), 
+                              0);
+  if(DEBUG) INSPECT("nread", INT2FIX((int)nread));
+  
+  return qsp_data.hash;
+}
+
 
 
 void Init_http11()
@@ -571,6 +705,10 @@ void Init_http11()
   rb_define_method(cHttpParser, "error?", HttpParser_has_error,0);
   rb_define_method(cHttpParser, "finished?", HttpParser_is_finished,0);
   rb_define_method(cHttpParser, "nread", HttpParser_nread,0);
+  
+  rb_define_singleton_method(cHttpParser, "unescape", HttpParser_unescape, 1);
+  rb_define_singleton_method(cHttpParser, "escape", HttpParser_escape, 1);
+  rb_define_singleton_method(cHttpParser, "form_parse", HttpParser_form_parse, 1);
 
   cURIClassifier = rb_define_class_under(mMongrel, "URIClassifier", rb_cObject);
   rb_define_alloc_func(cURIClassifier, URIClassifier_alloc);
@@ -578,4 +716,5 @@ void Init_http11()
   rb_define_method(cURIClassifier, "register", URIClassifier_register, 2);
   rb_define_method(cURIClassifier, "unregister", URIClassifier_unregister, 1);
   rb_define_method(cURIClassifier, "resolve", URIClassifier_resolve, 1);
+
 }

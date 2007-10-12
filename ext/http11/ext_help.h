@@ -11,4 +11,8 @@
 #define TRACE() 
 #endif
 
+#define DEBUG (RTEST(ruby_debug))
+#define INSPECT(n,a) (fprintf(stderr, "*** %s: %s\n", n, RSTRING_PTR(rb_funcall(a, rb_intern("inspect"), 0))))
+
+
 #endif

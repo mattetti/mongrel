@@ -43,6 +43,13 @@ size_t http_parser_execute(http_parser *parser, const char *data, size_t len, si
 int http_parser_has_error(http_parser *parser);
 int http_parser_is_finished(http_parser *parser);
 
+
+long url_escape_length(const char *s, long len);
+void url_escape(const char *s, long len, char *out);
+
+long url_unescape_length(const char *s, long len);
+void url_unescape(const char *s, long len, char *out);
+
 #define http_parser_nread(parser) (parser)->nread 
 
 #endif

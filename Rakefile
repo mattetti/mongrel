@@ -108,8 +108,14 @@ task :gem_source do
   sh %{ scp -r ChangeLog pkg/* rubyforge.org:/var/www/gforge-projects/mongrel/releases/ }
 end
 
-task :ragel do
+task :ragel => ['ext/http11/http11_parser.c', 'ext/http11/form_parser.c']
+
+file('ext/http11/http11_parser.c' => 'ext/http11/http11_parser.rl') do
   sh %{ragel ext/http11/http11_parser.rl | rlgen-cd -G2 -o ext/http11/http11_parser.c}
+end
+
+file('ext/http11/form_parser.c' => 'ext/http11/form_parser.rl') do
+  sh %{ragel ext/http11/form_parser.rl | rlgen-cd -G2 -o ext/http11/form_parser.c}
 end
 
 task :site_webgen do

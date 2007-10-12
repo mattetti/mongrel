@@ -13,6 +13,20 @@
 #define MARK(M,FPC) (parser->M = (FPC) - buffer)
 #define PTR_TO(F) (buffer + parser->F)
 
+/* For [un]escape */
+#define XDIGIT_TO_NUM(h) ((h) < 'A' ? (h) - '0' : toupper(h) - 'A' + 10)
+#define X2DIGITS_TO_NUM(h1, h2) ((XDIGIT_TO_NUM (h1) << 4) + XDIGIT_TO_NUM (h2))
+#define XNUM_TO_DIGIT(x) ("0123456789ABCDEF"[x] + 0)
+#define SAFE_CHAR(c) ( \
+ ('a' <= c && c <= 'z') || \
+ ('A' <= c && c <= 'Z') || \
+ ('0' <= c && c <= '9') || \
+ c == '$' || \
+ c == '_' || \
+ c == '.' || \
+ c == '-' \
+)
+
 /** machine **/
 %%{
   machine http_parser;
@@ -189,4 +203,62 @@ int http_parser_has_error(http_parser *parser) {
 
 int http_parser_is_finished(http_parser *parser) {
   return parser->cs == http_parser_first_final;
+}
+
+
+/* returns the length of a 2 b escaped string. O(n) */
+long url_escape_length(const char *s, long len)
+{
+  long i, escape_count = 0;
+  
+  for(i=0; i<len; i++)
+    if(!SAFE_CHAR(s[i])) escape_count++;
+  return len + 2*escape_count;
+}
+
+/* escapes a string s into a string out.
+ * does not allocate memory for out. you must allocate and free this
+ * string yourself. use url_escape_length() to find out how long the
+ * string needs to be.
+ */
+void url_escape(const char *s, long len, char *out) 
+{
+  long i,j;
+  
+  for(i=0,j=0; i<len; i++) {
+    if(!SAFE_CHAR(s[i])) {
+      out[j++] = '%';
+      out[j++] = XNUM_TO_DIGIT (s[i] >> 4);
+      out[j++] = XNUM_TO_DIGIT (s[i] & 0xf);
+    } else out[j++] = s[i];
+  }
+}
+
+/* returns the length of a 2 b unescaped string. O(n) */
+long url_unescape_length(const char *s, long len)
+{
+  long i, escape_count = 0;
+  
+  for(i=0; i < len-2; i++) {
+    if(s[i] == '%' && isxdigit(s[i+1]) && isxdigit(s[i+2])) {
+      i+=2;
+      escape_count++;
+    }
+  }
+  return len-2*escape_count;
+}
+
+/* unescapes URL. e.g "%21" becomes "!"  */
+void url_unescape(const char *s, long len, char *out) 
+{
+  long i, j;
+  
+  for(i=0,j=0; i<len; i++,j++) {
+    if(s[i] == '+') {
+      out[j] = ' ';
+    } else if(s[i] == '%' && i < len-2 && isxdigit(s[i+1]) && isxdigit(s[i+2])) {
+      out[j] = X2DIGITS_TO_NUM(s[i+1], s[i+2]);
+      i+=2;
+    } else out[j] = s[i];
+  }
 }
