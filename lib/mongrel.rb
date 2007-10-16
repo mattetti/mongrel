@@ -297,17 +297,13 @@ module Mongrel
     # query strings faster.  Use this rather than the cgi.rb
     # version since it's faster.  (Stolen from Camping).
     def self.escape(s)
-      s.to_s.gsub(/([^ a-zA-Z0-9_.-]+)/n) {
-        '%'+$1.unpack('H2'*$1.size).join('%').upcase
-      }.tr(' ', '+') 
+      HttpParser.escape(s)
     end
 
 
     # Unescapes a URI escaped string. (Stolen from Camping).
     def self.unescape(s)
-      s.tr('+', ' ').gsub(/((?:%[0-9a-fA-F]{2})+)/n){
-        [$1.delete('%')].pack('H*')
-      } 
+      HttpParser.unescape(s)
     end
 
     # Parses a query string by breaking it up at the '&' 
