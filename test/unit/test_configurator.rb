@@ -27,13 +27,22 @@ end
 
 
 class ConfiguratorTest < Test::Unit::TestCase
-
+  def setup
+    @configurator_test_log = "configurator_test.log"
+  end
+  
+  def teardown
+    FileUtils.rm @configurator_test_log if File.exist? @configurator_test_log
+  end
+  
+  ###
+  
   def test_base_handler_config
     @port = process_based_port
     @config = nil
 
     redirect_test_io do
-      @config = Mongrel::Configurator.new :host => "localhost" do
+      @config = configurator do
         listener :port => process_based_port do
           # 2 in front should run, but the sentinel shouldn't since dirhandler processes the request
           uri "/", :handler => plugin("/handlers/testplugin")
@@ -84,5 +93,27 @@ class ConfiguratorTest < Test::Unit::TestCase
       res = Net::HTTP.get(URI.parse("http://localhost:#{@port}/"))
     end
   end
-
+  
+  def test_logger
+    logger  = Logger.new(@configurator_test_log)
+    message = "You want it to be one way. But it's the other way."
+    
+    redirect_test_io do
+      @config = configurator do
+        self.logger = logger
+        log message
+      end
+    end
+    
+    assert_equal logger, @config.logger
+    assert File.exist?(@configurator_test_log), "logger file not created"
+    assert File.read(@configurator_test_log).include?(message), "message not logged"
+  end
+  
+  ###
+  
+  def configurator(options = {}, &block)
+    options[:host] ||= "localhost"
+    Mongrel::Configurator.new options, &block
+  end
 end

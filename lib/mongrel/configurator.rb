@@ -36,15 +36,20 @@ module Mongrel
     attr_reader :listeners
     attr_reader :defaults
     attr_reader :needs_restart
-
+    
+    attr_accessor :logger
+    
     # You pass in initial defaults and then a block to continue configuring.
     def initialize(defaults={}, &block)
       @listener = nil
       @listener_name = nil
       @listeners = {}
-      @defaults = defaults
+      
       @needs_restart = false
+      
+      @defaults = defaults
       @pid_file = defaults[:pid_file]
+      @logger   = defaults[:logger] || Mongrel.logger
 
       if block
         cloaker(&block).bind(self).call
@@ -379,10 +384,11 @@ module Mongrel
       end
     end
 
-    # Logs a simple message to STDERR (or the mongrel log if in daemon mode).
+    # Logs a simple message to Mongrel.logger (or the mongrel log if in daemon mode).
+    # You may also use any of the methods stdlib's logger uses such as :info, :debug, 
+    # :warn, :error and :fatal.
     def log(msg)
-      STDERR.print "** ", msg, "\n"
+      @logger.info "** #{Time.new} : #{msg}"
     end
-
   end
 end

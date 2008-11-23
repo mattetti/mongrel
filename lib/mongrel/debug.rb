@@ -99,7 +99,7 @@ module RequestLog
     
     def process(request,response)
       p = request.params
-      STDERR.puts "#{p['REMOTE_ADDR']} - [#{Time.now.httpdate}] \"#{p['REQUEST_METHOD']} #{p["REQUEST_URI"]} HTTP/1.1\""
+      Mongrel.logger.info "#{p['REMOTE_ADDR']} - [#{Time.now.httpdate}] \"#{p['REQUEST_METHOD']} #{p["REQUEST_URI"]} HTTP/1.1\""
     end
   end
   
@@ -154,7 +154,7 @@ module RequestLog
         $run_count += 1
         $last_stat = stats
       rescue Object
-        STDERR.puts "object.log ERROR: #$!"
+        Mongrel.logger.error "object.log ERROR: #$!"
       end
     end
   end

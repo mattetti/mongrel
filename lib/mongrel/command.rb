@@ -137,7 +137,7 @@ module Mongrel
 
       # Just a simple method to display failure until something better is developed.
       def failure(message)
-        STDERR.puts "!!! #{message}"
+        Mongrel.logger.fatal "!!! #{message}"
       end
     end
 
@@ -192,12 +192,12 @@ module Mongrel
 
           command = GemPlugin::Manager.instance.create("/commands/#{cmd_name}", :argv => args)
         rescue OptionParser::InvalidOption
-          STDERR.puts "#$! for command '#{cmd_name}'"
-          STDERR.puts "Try #{cmd_name} -h to get help."
+          Mongrel.logger.error "#$! for command '#{cmd_name}'"
+          Mongrel.logger.error "Try #{cmd_name} -h to get help."
           return false
         rescue
-          STDERR.puts "ERROR RUNNING '#{cmd_name}': #$!"
-          STDERR.puts "Use help command to get help"
+          Mongrel.logger.error "ERROR RUNNING '#{cmd_name}': #$!"
+          Mongrel.logger.error "Use help command to get help"
           return false
         end
 
@@ -206,7 +206,7 @@ module Mongrel
         # needed so the command is already valid so we can skip it.
         if not command.done_validating
           if not command.validate
-            STDERR.puts "#{cmd_name} reported an error. Use mongrel_rails #{cmd_name} -h to get help."
+            Mongrel.logger.info "#{cmd_name} reported an error. Use mongrel_rails #{cmd_name} -h to get help."
             return false
           else
             command.run
